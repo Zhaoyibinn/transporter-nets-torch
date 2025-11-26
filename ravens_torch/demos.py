@@ -20,6 +20,9 @@ flags.DEFINE_bool('shared_memory', False, '')
 flags.DEFINE_string('task', 'block-insertion', '')
 flags.DEFINE_string('mode', 'test', '')
 flags.DEFINE_integer('n', 1000, '')
+flags.DEFINE_float('sim_speed', -1, '')
+
+flags.DEFINE_bool('all', False, '')
 
 FLAGS = flags.FLAGS
 
@@ -31,14 +34,15 @@ def main(unused_argv):
         FLAGS.assets_root,
         disp=FLAGS.disp,
         shared_memory=FLAGS.shared_memory,
-        hz=480)
+        hz=480,
+        sim_speed=FLAGS.sim_speed)
     task = tasks.names[FLAGS.task]()
     task.mode = FLAGS.mode
 
     # Initialize scripted oracle agent and dataset.
     agent = task.oracle(env)
     dataset = Dataset(os.path.join(
-        FLAGS.data_dir, f'{FLAGS.task}-{task.mode}'))
+        FLAGS.data_dir, f'{FLAGS.task}-{task.mode}'),all_flag=FLAGS.all)
 
     # Train seeds are even and test seeds are odd.
     seed = dataset.max_seed
@@ -46,6 +50,8 @@ def main(unused_argv):
         seed = -1 if (task.mode == 'test') else -2
 
     # Collect training data from oracle demonstrations.
+    # dataset.n_episodes = 0
+    
     while dataset.n_episodes < FLAGS.n:
         print(f'Oracle demonstration: {dataset.n_episodes + 1}/{FLAGS.n}')
         episode, total_reward = [], 0

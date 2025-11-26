@@ -7,6 +7,11 @@
 import numpy as np
 from ravens_torch.tasks.task import Task
 from ravens_torch.utils import utils
+import os
+from pathlib import Path
+
+import trimesh
+import open3d as o3d
 
 import pybullet as p
 
@@ -35,7 +40,88 @@ class BlockInsertion(Task):
         size = (0.1, 0.1, 0.04)
         urdf = 'insertion/ell.urdf'
         pose = self.get_random_pose(env, size)
+
+        size_own = (0.1, 0.1, 0.04)
+        urdf_own = 'insertion/fuse_post.urdf'
+        extra_pose_own = 'insertion/T.txt'
+        mesh_own = 'insertion/fuse_post.ply'
+        if not os.path.exists(env.assets_root + '/insertion/fuse_post_trans.stl'):
+            self.trans_mesh(extra_pose_own,mesh_own,env)
+        pose_own = self.get_random_pose_own(env, size_own)
+        env.add_object(urdf_own, pose_own)
         return env.add_object(urdf, pose)
+
+    def trans_mesh(self, extra_pose_own, mesh_own, env):
+        asset_root = Path(env.assets_root)
+        mesh_path = asset_root / mesh_own
+        extra_pose_path = asset_root / extra_pose_own
+        if not mesh_path.exists():
+            raise FileNotFoundError(f"Mesh file not found: {mesh_path}")
+        if not extra_pose_path.exists():
+            raise FileNotFoundError(f"Extra pose file not found: {extra_pose_path}")
+
+        extra_pose = np.loadtxt(extra_pose_path)
+        translation = np.asarray(extra_pose[0], dtype=np.float32)
+        euler_deg = np.asarray(extra_pose[1], dtype=np.float32)
+        if extra_pose.shape[0] > 2:
+            scale_vals = np.asarray(extra_pose[2], dtype=np.float32).ravel()
+            scale = float(scale_vals[0]) if scale_vals.size else 1.0
+        else:
+            scale = 1.0
+        rotation_rad = np.deg2rad(euler_deg)
+
+        mesh = trimesh.load(mesh_path, force='mesh').copy()
+
+        # Convert Y-up assets into PyBullet's Z-up coordinate system.
+
+        transform = trimesh.transformations.euler_matrix(
+            rotation_rad[0], rotation_rad[1], rotation_rad[2])
+        transform[:3, 3] = translation
+
+        mesh.apply_transform(transform)
+        if not np.isclose(scale, 1.0):
+            mesh.apply_scale(scale)
+
+        mesh = self._simplify_mesh(mesh, target_faces=4000)
+
+        y_up_to_z_up = trimesh.transformations.euler_matrix(np.pi / 2, 0, 0)
+        mesh.apply_transform(y_up_to_z_up)
+
+        output_path = mesh_path.with_name('fuse_post_trans.stl')
+        output_path.parent.mkdir(parents=True, exist_ok=True)
+        mesh.export(output_path)
+        return str(output_path)
+
+    @staticmethod
+    def _simplify_mesh(mesh, target_faces):
+        if not isinstance(mesh, trimesh.Trimesh):
+            raise TypeError('Loaded geometry is not a single mesh.')
+
+        if mesh.faces.shape[0] <= target_faces:
+            return mesh
+
+        if hasattr(mesh, 'simplify_quadratic_decimation'):
+            simplified = mesh.simplify_quadratic_decimation(target_faces)
+            if isinstance(simplified, trimesh.Trimesh):
+                return simplified
+            raise RuntimeError('Mesh simplification failed to return a mesh instance.')
+
+        if o3d is None:
+            raise AttributeError(
+                'Current trimesh build lacks simplify_quadratic_decimation and open3d is not installed. '
+                'Install open3d to enable mesh downsampling.')
+
+        o3d_mesh = o3d.geometry.TriangleMesh(
+            o3d.utility.Vector3dVector(mesh.vertices),
+            o3d.utility.Vector3iVector(mesh.faces))
+        o3d_mesh = o3d_mesh.simplify_quadric_decimation(target_faces)
+        o3d_mesh.remove_degenerate_triangles()
+        o3d_mesh.remove_duplicated_triangles()
+        o3d_mesh.remove_non_manifold_edges()
+        return trimesh.Trimesh(
+            vertices=np.asarray(o3d_mesh.vertices),
+            faces=np.asarray(o3d_mesh.triangles),
+            process=True)
 
     def add_fixture(self, env):
         """Add L-shaped fixture to place block."""

@@ -24,7 +24,7 @@ TASK_NAMES = sorted(TASK_NAMES)[::-1]
 class Dataset:
     """A simple image dataset class."""
 
-    def __init__(self, path):
+    def __init__(self, path, all_flag = False):
         """A simple RGB-D image dataset."""
         self.path = path
         self.sample_set = []
@@ -33,13 +33,14 @@ class Dataset:
 
         # Track existing dataset if it exists.
         color_path = os.path.join(self.path, 'action')
-        if os.path.exists(color_path):
-            for fname in sorted(os.listdir(color_path)):
-                if '.pkl' in fname:
-                    seed = int(fname[(fname.find('-') + 1):-4])
-                    self.n_episodes += 1
-                    self.max_seed = max(self.max_seed, seed)
-
+        if not all_flag:
+            if os.path.exists(color_path):
+                for fname in sorted(os.listdir(color_path)):
+                    if '.pkl' in fname:
+                        seed = int(fname[(fname.find('-') + 1):-4])
+                        self.n_episodes += 1
+                        self.max_seed = max(self.max_seed, seed)
+        # print("手动全部再重新跑一遍")
         self._cache = {}
 
     def add(self, seed, episode):

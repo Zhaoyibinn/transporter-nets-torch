@@ -316,6 +316,31 @@ class Task():
         rot = utils.eulerXYZ_to_quatXYZW((0, 0, theta))
         return pos, rot
 
+    def get_random_pose_own(self, env, obj_size):
+        """Get random collision-free object pose within workspace bounds."""
+
+        # Get erosion size of object in pixels.
+        max_size = np.sqrt(obj_size[0]**2 + obj_size[1]**2)
+        erode_size = int(np.round(max_size / self.pix_size))
+
+        _, hmap, obj_mask = self.get_true_image(env)
+
+        # Randomly sample an object pose within free-space pixels.
+        free = np.ones(obj_mask.shape, dtype=np.uint8)
+        for obj_ids in env.obj_ids.values():
+            for obj_id in obj_ids:
+                free[obj_mask == obj_id] = 0
+        free[0, :], free[:, 0], free[-1, :], free[:, -1] = 0, 0, 0, 0
+        free = cv2.erode(free, np.ones((erode_size, erode_size), np.uint8))
+        if np.sum(free) == 0:
+            return None, None
+        pix = utils.sample_distribution(np.float32(free))
+        pos = utils.pix_to_xyz(pix, hmap, self.bounds, self.pix_size)
+        pos = (pos[0], pos[1], obj_size[2] / 2)
+        theta = np.random.rand() * 2 * np.pi
+        rot = utils.eulerXYZ_to_quatXYZW((0, 0, theta))
+        return pos, rot
+
     # -------------------------------------------------------------------------
     # Helper Functions
     # -------------------------------------------------------------------------

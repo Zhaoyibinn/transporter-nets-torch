@@ -9,7 +9,7 @@ import numpy as np
 from transforms3d import euler
 from PIL import Image
 import torchvision
-from torchvision.transforms.functional import rotate
+from torchvision.transforms.functional import InterpolationMode, rotate
 from einops.layers.torch import Rearrange
 
 from ravens_torch.utils.utils.heightmap import reconstruct_heightmaps, pix_to_xyz
@@ -187,7 +187,7 @@ def apply_rotations_to_tensor(in_tensor, num_rotations, center=None, reverse=Fal
             t_clone[idx, ...],
             theta,
             center=center,
-            resample=Image.NEAREST)
+            interpolation=InterpolationMode.NEAREST)
     tensor = Rearrange('b c h w -> b h w c')(tensor)
 
     return tensor

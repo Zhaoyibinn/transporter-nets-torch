@@ -32,7 +32,8 @@ class Environment(gym.Env):
                  task=None,
                  disp=False,
                  shared_memory=False,
-                 hz=240):
+                 hz=240,
+                 sim_speed=1.0):
         """Creates OpenAI Gym-style environment with PyBullet.
 
         Args:
@@ -52,6 +53,9 @@ class Environment(gym.Env):
         self.agent_cams = cameras.RealSenseD415.CONFIG
 
         self.assets_root = assets_root
+        self.disp = disp
+        self.sim_speed = sim_speed
+        self._time_step = 1. / hz
 
         color_tuple = [
             gym.spaces.Box(0, 255, config['image_size'] + (3,), dtype=np.uint8)
@@ -102,7 +106,8 @@ class Environment(gym.Env):
         p.setPhysicsEngineParameter(enableFileCaching=0)
         p.setAdditionalSearchPath(assets_root)
         p.setAdditionalSearchPath(tempfile.gettempdir())
-        p.setTimeStep(1. / hz)
+        p.setTimeStep(self._time_step)
+        p.setRealTimeSimulation(0)
 
         # If using --disp, move default camera closer to the scene.
         if disp:
@@ -132,6 +137,9 @@ class Environment(gym.Env):
             pose[0],
             pose[1],
             useFixedBase=fixed_base)
+        if obj_id is None:
+            raise FileNotFoundError(
+                f"Failed to load URDF '{urdf}' from assets root '{self.assets_root}'.")
         self.obj_ids[category].append(obj_id)
         return obj_id
 
@@ -213,7 +221,7 @@ class Environment(gym.Env):
 
         # Step simulator asynchronously until objects settle.
         while not self.is_static:
-            p.stepSimulation()
+            self._step_simulation()
 
         # Get task rewards.
         reward, info = self.task.reward() if action is not None else (0, {})
@@ -337,9 +345,11 @@ class Environment(gym.Env):
                 controlMode=p.POSITION_CONTROL,
                 targetPositions=stepj,
                 positionGains=gains)
-            p.stepSimulation()
-            if self.task.mode == 'test' and self.task.primitive.video_recorder:
-                self.task.primitive.video_recorder.record_frame()
+            record_callback = None
+            if (self.task.mode == 'test' and
+                    self.task.primitive.video_recorder):
+                record_callback = self.task.primitive.video_recorder.record_frame
+            self._step_simulation(record_callback)
         print(f'Warning: movej exceeded {timeout} second timeout. Skipping.')
         return True
 
@@ -375,6 +385,14 @@ class Environment(gym.Env):
 
         return obs
 
+    def _step_simulation(self, record_callback=None):
+        """Advance physics one step and optionally record video frame."""
+        p.stepSimulation()
+        if record_callback:
+            record_callback()
+        if self.disp and self.sim_speed > 0:
+            time.sleep(max(0.0, self._time_step / self.sim_speed))
+
 
 class EnvironmentNoRotationsWithHeightmap(Environment):
     """Environment that disables any rotations and always passes [0, 0, 0, 1]."""
@@ -384,9 +402,10 @@ class EnvironmentNoRotationsWithHeightmap(Environment):
                  task=None,
                  disp=False,
                  shared_memory=False,
-                 hz=240):
+                 hz=240,
+                 sim_speed=1.0):
         super(EnvironmentNoRotationsWithHeightmap,
-              self).__init__(assets_root, task, disp, shared_memory, hz)
+              self).__init__(assets_root, task, disp, shared_memory, hz, sim_speed)
 
         heightmap_tuple = [
             gym.spaces.Box(0.0, 20.0, (320, 160, 3), dtype=np.float32),
