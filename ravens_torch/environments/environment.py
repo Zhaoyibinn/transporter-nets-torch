@@ -5,16 +5,27 @@
 """Environment class."""
 
 import os
+import cv2
+import sys
 import tempfile
 import time
+from pathlib import Path
+from types import SimpleNamespace
 
 import gym
 import numpy as np
+import torch
 from ravens_torch.tasks import cameras
 from ravens_torch.utils import pybullet_utils
 from ravens_torch.utils import utils
 
+from GS.scene import Scene
+from GS.scene.cameras import Camera
+from GS.gaussian_renderer import GaussianModel,render, network_gui
+
 import pybullet as p
+
+
 
 PLACE_STEP = 0.0003
 PLACE_DELTA_THRESHOLD = 0.005
@@ -51,6 +62,9 @@ class Environment(gym.Env):
         self.obj_ids = {'fixed': [], 'rigid': [], 'deformable': []}
         self.homej = np.array([-1, -0.5, 0.5, -0.5, -0.5, 0]) * np.pi
         self.agent_cams = cameras.RealSenseD415.CONFIG
+        self.gs_scene = None
+        self.gs_pipe = None
+        self.gs_background = None
 
         self.assets_root = assets_root
         self.disp = disp
@@ -120,6 +134,51 @@ class Environment(gym.Env):
 
         if task:
             self.set_task(task)
+
+    def build_gs_camera(self, K, width, height, position, quaternion,viewm=None,projm=None,
+                        uid=0, image_name="pybullet_cam", data_device="cuda"):
+        """Construct a GS camera that matches PyBullet's OpenGL renderer."""
+        K = np.asarray(K, dtype=np.float32).reshape(3, 3)
+        width = int(width)
+        height = int(height)
+        fx = float(K[0, 0])
+        fy = float(K[1, 1])
+        if fx <= 0 or fy <= 0:
+            raise ValueError("Camera intrinsics must have positive focal lengths.")
+
+        FoVx = 2.0 * np.arctan(width / (2.0 * fx))
+        FoVy = 2.0 * np.arctan(height / (2.0 * fy))
+
+
+        rotm = np.array(p.getMatrixFromQuaternion(quaternion), dtype=np.float32).reshape(3, 3) # 应该是c2w
+        position = np.asarray(position, dtype=np.float32)# 应该是c2w
+
+
+        # rotm = qvec2rotmat(q_wxyz)
+
+        T_c2w = np.eye(4, dtype=np.float32)
+        T_c2w[0:3, 0:3] = rotm
+        T_c2w[0:3, 3] = position
+
+        T_w2c = np.linalg.inv(T_c2w)
+
+
+        image = torch.zeros((3, height, width), dtype=torch.float32)
+
+        return Camera(
+            colmap_id=uid,
+            R=T_c2w[:3,:3],
+            T=T_w2c[:3,3],
+            FoVx=FoVx,
+            FoVy=FoVy,
+            image=image,
+            gt_alpha_mask=None,
+            image_name=image_name,
+            uid=uid,
+            data_device=data_device,
+            viewm = viewm,
+            projm = projm
+        )
 
     @property
     def is_static(self):
@@ -193,6 +252,8 @@ class Environment(gym.Env):
         # Re-enable rendering.
         p.configureDebugVisualizer(p.COV_ENABLE_RENDERING, 1)
 
+        
+
         obs, _, _, _ = self.step()
         return obs
 
@@ -220,6 +281,7 @@ class Environment(gym.Env):
                 return obs, 0.0, True, self.info
 
         # Step simulator asynchronously until objects settle.
+        # obs = self._get_obs()
         while not self.is_static:
             self._step_simulation()
 
@@ -229,6 +291,7 @@ class Environment(gym.Env):
 
         # Add ground truth robot state into info.
         info.update(self.info)
+        
 
         obs = self._get_obs()
 
@@ -294,7 +357,7 @@ class Environment(gym.Env):
         # Get segmentation image.
         segm = np.uint8(segm).reshape(depth_image_size)
 
-        return color, depth, segm
+        return color, depth, segm,viewm,projm
 
     @property
     def info(self):
@@ -317,6 +380,19 @@ class Environment(gym.Env):
     def set_task(self, task):
         task.set_assets_root(self.assets_root)
         self.task = task
+        GS_path = self.assets_root + '/' + 'insertion/point_cloud.ply'
+        extra_T_path = self.assets_root + '/' + 'insertion/T.txt'
+        
+        gaussians = GaussianModel(3)
+        self.gs_scene = Scene(gaussians, GS_path=GS_path,extra_T_path = extra_T_path)
+        self.gs_pipe = SimpleNamespace(
+            convert_SHs_python=False,
+            compute_cov3D_python=False,
+            depth_ratio=0.0,
+            debug=False,
+        )
+        self.gs_background = torch.tensor([0.0, 0.0, 0.0], dtype=torch.float32, device="cuda")
+        
 
     # ---------------------------------------------------------------------------
     # Robot Movement Functions
@@ -378,10 +454,32 @@ class Environment(gym.Env):
     def _get_obs(self):
         # Get RGB-D camera image observations.
         obs = {'color': (), 'depth': ()}
+        if self.gs_scene is not None:
+            obs['gs_color'] = ()
+            obs['gs_depth'] = ()
+            own_obj_id = getattr(self.task, 'own_obj_id', None)
+            if own_obj_id is not None:
+                gs_scene_pose = p.getBasePositionAndOrientation(own_obj_id)
+                self.gs_scene.set_pose(gs_scene_pose[0], gs_scene_pose[1])
         for config in self.agent_cams:
-            color, depth, _ = self.render_camera(config)
+
+            K = config['intrinsics']
+            width = config['image_size'][1]
+            height = config['image_size'][0]
+            t = config['position']
+            q = config['rotation']
+
+            color, depth, _,viewm,projm = self.render_camera(config)
             obs['color'] += (color,)
             obs['depth'] += (depth,)
+            if self.gs_scene is not None:
+                gs_cam = self.build_gs_camera(K, width, height, t, q)
+                with torch.no_grad():
+                    render_pkg = render(gs_cam, self.gs_scene.gaussians, self.gs_pipe, self.gs_background)
+                gs_color = torch.clamp(render_pkg['render'], 0.0, 1.0).permute(1, 2, 0).contiguous().cpu().numpy()
+                gs_depth = render_pkg['surf_depth'].squeeze(0).contiguous().cpu().numpy()
+                obs['gs_color'] += (gs_color,)
+                obs['gs_depth'] += (gs_depth,)
 
         return obs
 

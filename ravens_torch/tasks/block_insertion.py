@@ -30,6 +30,9 @@ class BlockInsertion(Task):
     def _add_instance(self, env):
         block_id = self.add_block(env)
         targ_pose = self.add_fixture(env)
+
+        own_obj_id = self.add_block_own(env)
+        self.own_obj_id = own_obj_id
         # self.goals.append(
         #     ([block_id], [2 * np.pi], [[0]], [targ_pose], 'pose', None, 1.))
         self.goals.append(([(block_id, (2 * np.pi, None))], np.int32([[1]]),
@@ -41,15 +44,20 @@ class BlockInsertion(Task):
         urdf = 'insertion/ell.urdf'
         pose = self.get_random_pose(env, size)
 
+
+        return env.add_object(urdf, pose)
+    
+    def add_block_own(self, env):
         size_own = (0.1, 0.1, 0.04)
-        urdf_own = 'insertion/fuse_post.urdf'
-        extra_pose_own = 'insertion/T.txt'
+        self.urdf_own = 'insertion/fuse_post.urdf'
+        self.GS_own = 'GS/point_cloud.ply'
+        self.extra_pose_own = 'insertion/T.txt'
         mesh_own = 'insertion/fuse_post.ply'
         if not os.path.exists(env.assets_root + '/insertion/fuse_post_trans.stl'):
-            self.trans_mesh(extra_pose_own,mesh_own,env)
-        pose_own = self.get_random_pose_own(env, size_own)
-        env.add_object(urdf_own, pose_own)
-        return env.add_object(urdf, pose)
+            self.trans_mesh(self.extra_pose_own,mesh_own,env)
+        self.pose_own = self.get_random_pose_own(env, size_own)
+        # self.pose_own = ((0.0,0.0,0.0),(0.0,0.0,0.0,0.0))
+        return env.add_object(self.urdf_own, self.pose_own)
 
     def trans_mesh(self, extra_pose_own, mesh_own, env):
         asset_root = Path(env.assets_root)
