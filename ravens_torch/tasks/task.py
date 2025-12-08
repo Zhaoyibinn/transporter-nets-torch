@@ -131,7 +131,13 @@ class Task():
 
             # Get picking pose.
             pick_prob = np.float32(pick_mask)
-            pick_pix = utils.sample_distribution(pick_prob)
+            # pick_pix = utils.sample_distribution(pick_prob)
+
+            pick_indices = np.argwhere(pick_mask > 0)
+            pick_center = np.round(np.mean(pick_indices, axis=0)).astype(np.int32)
+            pick_pix = tuple(np.clip(pick_center, [0, 0], [pick_mask.shape[0] - 1,
+                                                       pick_mask.shape[1] - 1]))
+            print("修改为基于mask中心点的pick位置")
             # For "deterministic" demonstrations on insertion-easy, use this:
             # pick_pix = (160,80)
             pick_pos = utils.pix_to_xyz(pick_pix, hmap,

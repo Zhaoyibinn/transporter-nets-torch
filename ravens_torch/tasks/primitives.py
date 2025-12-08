@@ -27,7 +27,7 @@ class PickPlace():
             self.video_recorder.record_frame()
         return utils.multiply(pose0, pose1)
 
-    def __call__(self, movej, movep, ee, pose0, pose1):
+    def __call__(self, movej, movep, ee, gs_render, pose0, pose1):
         """Execute pick and place primitive.
 
         Args:
@@ -42,26 +42,34 @@ class PickPlace():
         """
         pick_pose, place_pose = pose0, pose1
 
+        self.gs_render = gs_render
+
         # Execute picking primitive.
         prepick_to_pick = ((0, 0, 0.32), (0, 0, 0, 1))
         postpick_to_pick = ((0, 0, self.height), (0, 0, 0, 1))
         prepick_pose = self.multiply(pick_pose, prepick_to_pick)
         postpick_pose = self.multiply(pick_pose, postpick_to_pick)
-        timeout = movep(prepick_pose)
+        timeout = movep(prepick_pose, get_obs=gs_render)
+
 
         # Move towards pick pose until contact is detected.
         delta = (np.float32([0, 0, -0.001]),
                  utils.eulerXYZ_to_quatXYZW((0, 0, 0)))
         targ_pose = prepick_pose
+        idx = 0
         while not ee.detect_contact():  # and target_pose[2] > 0:
             targ_pose = self.multiply(targ_pose, delta)
-            timeout |= movep(targ_pose)
+            if idx % 30 ==0:
+                timeout |= movep(targ_pose,get_obs=gs_render)
+            else:             
+                timeout |= movep(targ_pose)
             if timeout:
                 return True
+            idx += 1
 
         # Activate end effector, move up, and check picking success.
         ee.activate()
-        timeout |= movep(postpick_pose, self.speed)
+        timeout |= movep(postpick_pose, self.speed, get_obs=gs_render)
         pick_success = ee.check_grasp()
 
         # Execute placing primitive if pick is successful.
@@ -71,11 +79,16 @@ class PickPlace():
             preplace_pose = self.multiply(place_pose, preplace_to_place)
             postplace_pose = self.multiply(place_pose, postplace_to_place)
             targ_pose = preplace_pose
+            idx = 0
             while not ee.detect_contact():
                 targ_pose = self.multiply(targ_pose, delta)
-                timeout |= movep(targ_pose, self.speed)
+                if idx % 30 ==0:
+                    timeout |= movep(targ_pose,get_obs=gs_render)
+                else:
+                    timeout |= movep(targ_pose, self.speed)
                 if timeout:
                     return True
+                idx += 1
             ee.release()
             timeout |= movep(postplace_pose)
 
@@ -83,7 +96,7 @@ class PickPlace():
         else:
             ee.release()
             timeout |= movep(prepick_pose)
-
+        
         return timeout
 
 

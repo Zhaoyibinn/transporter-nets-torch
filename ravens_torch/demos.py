@@ -22,7 +22,11 @@ flags.DEFINE_string('mode', 'test', '')
 flags.DEFINE_integer('n', 1000, '')
 flags.DEFINE_float('sim_speed', -1, '')
 
-flags.DEFINE_bool('all', False, '')
+flags.DEFINE_bool('all', False, '') 
+# 是否从头开始再来一遍
+
+flags.DEFINE_string('gs_render', 'test', '')
+# GS渲染的保存路径 如果不指定就不保存
 
 FLAGS = flags.FLAGS
 
@@ -35,7 +39,8 @@ def main(unused_argv):
         disp=FLAGS.disp,
         shared_memory=FLAGS.shared_memory,
         hz=480,
-        sim_speed=FLAGS.sim_speed)
+        sim_speed=FLAGS.sim_speed,
+        gs_render=FLAGS.gs_render)
     task = tasks.names[FLAGS.task]()
     task.mode = FLAGS.mode
 

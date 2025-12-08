@@ -44,7 +44,8 @@ class Environment(gym.Env):
                  disp=False,
                  shared_memory=False,
                  hz=240,
-                 sim_speed=1.0):
+                 sim_speed=1.0,
+                 gs_render=None):
         """Creates OpenAI Gym-style environment with PyBullet.
 
         Args:
@@ -58,6 +59,8 @@ class Environment(gym.Env):
         Raises:
           RuntimeError: if pybullet cannot load fileIOPlugin.
         """
+
+        self.gs_render = gs_render
         self.pix_size = 0.003125
         self.obj_ids = {'fixed': [], 'rigid': [], 'deformable': []}
         self.homej = np.array([-1, -0.5, 0.5, -0.5, -0.5, 0]) * np.pi
@@ -268,14 +271,14 @@ class Environment(gym.Env):
         """
         if action is not None:
             timeout = self.task.primitive(
-                self.movej, self.movep, self.ee, **action)
+                self.movej, self.movep, self.ee, self.gs_render, **action)
 
             # Exit early if action times out. We still return an observation
             # so that we don't break the Gym API contract.
             if timeout:
                 obs = {'color': (), 'depth': ()}
                 for config in self.agent_cams:
-                    color, depth, _ = self.render_camera(config)
+                    color, depth, _,_,_= self.render_camera(config)
                     obs['color'] += (color,)
                     obs['depth'] += (depth,)
                 return obs, 0.0, True, self.info
@@ -380,11 +383,19 @@ class Environment(gym.Env):
     def set_task(self, task):
         task.set_assets_root(self.assets_root)
         self.task = task
-        GS_path = self.assets_root + '/' + 'insertion/point_cloud.ply'
-        extra_T_path = self.assets_root + '/' + 'insertion/T.txt'
+        # GS_path = self.assets_root + '/' + 'insertion/point_cloud.ply'
+        # extra_T_path = self.assets_root + '/' + 'insertion/T.txt'
+
+        scene = "milk"
+        self.task.scene = scene
+        self.task.urdf_own = f'insertion/{scene}/fuse_post.urdf'
+        # self.GS_own = 'GS/point_cloud.ply'
+        self.task.GS_own = f'insertion/{scene}/point_cloud.ply'
+        self.task.extra_pose_own = f'insertion/{scene}/T.txt'
+        self.task.mesh_own = f'insertion/{scene}/fuse_post.ply'
         
         gaussians = GaussianModel(3)
-        self.gs_scene = Scene(gaussians, GS_path=GS_path,extra_T_path = extra_T_path)
+        self.gs_scene = Scene(gaussians, GS_path=self.assets_root + '/' + self.task.GS_own,extra_T_path = self.assets_root + '/' + self.task.extra_pose_own)
         self.gs_pipe = SimpleNamespace(
             convert_SHs_python=False,
             compute_cov3D_python=False,
@@ -398,12 +409,28 @@ class Environment(gym.Env):
     # Robot Movement Functions
     # ---------------------------------------------------------------------------
 
-    def movej(self, targj, speed=0.01, timeout=5):
+    def movej(self, targj, speed=0.01, timeout=5,get_obs = False):
         """Move UR5 to target joint configuration."""
+        # print("pybullet movej called")
         t0 = time.time()
         if self.task.mode == 'test' and self.task.primitive.video_recorder and self.task.primitive.video_recorder.record_mp4:
             timeout *= 24
+        timeout *= 240
+        
+        if get_obs:
+            self.gs_img_save_dir = get_obs
+            os.makedirs(self.gs_img_save_dir, exist_ok=True)
+        if get_obs:
+            obs = self._get_obs()
+            pybullet_color = obs['color'][0]
+            gs_color = obs['gs_color'][0]
+            cat_color = np.concatenate((pybullet_color, gs_color), axis=1)
+            cv2.imwrite(os.path.join(self.gs_img_save_dir,f"gs_img_{time.time()}.png"),cat_color)
+        
         while (time.time() - t0) < timeout:
+            
+
+                
             currj = [p.getJointState(self.ur5, i)[0] for i in self.joints]
             currj = np.array(currj)
             diffj = targj - currj
@@ -426,13 +453,15 @@ class Environment(gym.Env):
                     self.task.primitive.video_recorder):
                 record_callback = self.task.primitive.video_recorder.record_frame
             self._step_simulation(record_callback)
+            
+            
         print(f'Warning: movej exceeded {timeout} second timeout. Skipping.')
         return True
 
-    def movep(self, pose, speed=0.01):
+    def movep(self, pose, speed=0.01, get_obs = False):
         """Move UR5 to target end effector pose."""
         targj = self.solve_ik(pose)
-        return self.movej(targj, speed)
+        return self.movej(targj, speed,get_obs = get_obs)
 
     def solve_ik(self, pose):
         """Calculate joint configuration with inverse kinematics."""
@@ -476,7 +505,8 @@ class Environment(gym.Env):
                 gs_cam = self.build_gs_camera(K, width, height, t, q)
                 with torch.no_grad():
                     render_pkg = render(gs_cam, self.gs_scene.gaussians, self.gs_pipe, self.gs_background)
-                gs_color = torch.clamp(render_pkg['render'], 0.0, 1.0).permute(1, 2, 0).contiguous().cpu().numpy()
+                gs_color = torch.clamp(render_pkg['render'], 0.0, 1.0).permute(1, 2, 0).contiguous().cpu().numpy() * 255
+                gs_color = cv2.cvtColor(gs_color.astype(np.uint8), cv2.COLOR_RGB2BGR)
                 gs_depth = render_pkg['surf_depth'].squeeze(0).contiguous().cpu().numpy()
                 obs['gs_color'] += (gs_color,)
                 obs['gs_depth'] += (gs_depth,)

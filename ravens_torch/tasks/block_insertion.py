@@ -35,7 +35,9 @@ class BlockInsertion(Task):
         self.own_obj_id = own_obj_id
         # self.goals.append(
         #     ([block_id], [2 * np.pi], [[0]], [targ_pose], 'pose', None, 1.))
-        self.goals.append(([(block_id, (2 * np.pi, None))], np.int32([[1]]),
+        # self.goals.append(([(block_id, (2 * np.pi, None))], np.int32([[1]]),
+        #                    [targ_pose], False, True, 'pose', None, 1))
+        self.goals.append(([(own_obj_id, (2 * np.pi, None))], np.int32([[1]]),
                            [targ_pose], False, True, 'pose', None, 1))
 
     def add_block(self, env):
@@ -49,12 +51,14 @@ class BlockInsertion(Task):
     
     def add_block_own(self, env):
         size_own = (0.1, 0.1, 0.04)
-        self.urdf_own = 'insertion/fuse_post.urdf'
-        self.GS_own = 'GS/point_cloud.ply'
-        self.extra_pose_own = 'insertion/T.txt'
-        mesh_own = 'insertion/fuse_post.ply'
-        if not os.path.exists(env.assets_root + '/insertion/fuse_post_trans.stl'):
-            self.trans_mesh(self.extra_pose_own,mesh_own,env)
+        # scene = "milk"
+        # self.urdf_own = f'insertion/{scene}/fuse_post.urdf'
+        # # self.GS_own = 'GS/point_cloud.ply'
+        # self.GS_own = f'insertion/{scene}/point_cloud.ply'
+        # self.extra_pose_own = f'insertion/{scene}/T.txt'
+        # mesh_own = f'insertion/{scene}/fuse_post.ply'
+        if not os.path.exists(env.assets_root + f'/insertion/{self.scene}/fuse_post_trans.stl'):
+            self.trans_mesh(self.extra_pose_own,self.mesh_own,env)
         self.pose_own = self.get_random_pose_own(env, size_own)
         # self.pose_own = ((0.0,0.0,0.0),(0.0,0.0,0.0,0.0))
         return env.add_object(self.urdf_own, self.pose_own)
