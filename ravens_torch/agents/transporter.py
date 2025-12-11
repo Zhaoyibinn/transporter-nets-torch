@@ -48,7 +48,24 @@ class TransporterAgent:
                               hmap[Ellipsis, None]), axis=2)
         assert img.shape == self.in_shape, img.shape
         return img
+    def get_GS_image(self, obs):
+        """Stack color and height images image."""
 
+        # if self.use_goal_image:
+        #   colormap_g, heightmap_g = utils.get_fused_heightmap(goal, configs)
+        #   goal_image = self.concatenate_c_h(colormap_g, heightmap_g)
+        #   input_image = np.concatenate((input_image, goal_image), axis=2)
+        #   assert input_image.shape[2] == 12, input_image.shape
+
+        # Get color and height maps from RGB-D images.
+        cmap, hmap = utils.get_fused_heightmap_GS(
+            obs, self.cam_config, self.bounds, self.pix_size)
+        img = np.concatenate((cmap,
+                              hmap[Ellipsis, None],
+                              hmap[Ellipsis, None],
+                              hmap[Ellipsis, None]), axis=2)
+        assert img.shape == self.in_shape, img.shape
+        return img
     def get_sample(self, dataset, augment=True):
         """Get a dataset sample.
 
@@ -66,8 +83,10 @@ class TransporterAgent:
         """
 
         (obs, act, _, _), _ = dataset.sample()
-        img = self.get_image(obs)
-
+        if obs.get('gs_color', None) is None:
+            img = self.get_image(obs)
+        else:
+            img = self.get_GS_image(obs)
         # Get training labels from data sample.
         p0_xyz, p0_xyzw = act['pose0']
         p1_xyz, p1_xyzw = act['pose1']

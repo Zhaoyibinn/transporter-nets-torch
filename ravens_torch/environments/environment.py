@@ -11,6 +11,7 @@ import tempfile
 import time
 from pathlib import Path
 from types import SimpleNamespace
+import copy
 
 import gym
 import numpy as np
@@ -45,7 +46,9 @@ class Environment(gym.Env):
                  shared_memory=False,
                  hz=240,
                  sim_speed=1.0,
-                 gs_render=None):
+                 gs_render=None,
+                 own_scene = '',
+                 gs_engine = False):
         """Creates OpenAI Gym-style environment with PyBullet.
 
         Args:
@@ -68,6 +71,10 @@ class Environment(gym.Env):
         self.gs_scene = None
         self.gs_pipe = None
         self.gs_background = None
+
+        self.gs_engine = gs_engine
+
+        self.own_scene = own_scene
 
         self.assets_root = assets_root
         self.disp = disp
@@ -237,6 +244,8 @@ class Environment(gym.Env):
         self.ee = self.task.ee(self.assets_root, self.ur5, 9, self.obj_ids)
         self.ee_tip = 10  # Link ID of suction cup.
 
+        self.hand_cam_tip = 8
+
         # Get revolute joint indices of robot (skip fixed joints).
         n_joints = p.getNumJoints(self.ur5)
         joints = [p.getJointInfo(self.ur5, i) for i in range(n_joints)]
@@ -386,23 +395,23 @@ class Environment(gym.Env):
         # GS_path = self.assets_root + '/' + 'insertion/point_cloud.ply'
         # extra_T_path = self.assets_root + '/' + 'insertion/T.txt'
 
-        scene = "milk"
+        scene = self.own_scene
         self.task.scene = scene
         self.task.urdf_own = f'insertion/{scene}/fuse_post.urdf'
         # self.GS_own = 'GS/point_cloud.ply'
         self.task.GS_own = f'insertion/{scene}/point_cloud.ply'
         self.task.extra_pose_own = f'insertion/{scene}/T.txt'
         self.task.mesh_own = f'insertion/{scene}/fuse_post.ply'
-        
-        gaussians = GaussianModel(3)
-        self.gs_scene = Scene(gaussians, GS_path=self.assets_root + '/' + self.task.GS_own,extra_T_path = self.assets_root + '/' + self.task.extra_pose_own)
-        self.gs_pipe = SimpleNamespace(
-            convert_SHs_python=False,
-            compute_cov3D_python=False,
-            depth_ratio=0.0,
-            debug=False,
-        )
-        self.gs_background = torch.tensor([0.0, 0.0, 0.0], dtype=torch.float32, device="cuda")
+        if self.gs_engine:
+            gaussians = GaussianModel(3)
+            self.gs_scene = Scene(gaussians, GS_path=self.assets_root + '/' + self.task.GS_own,extra_T_path = self.assets_root + '/' + self.task.extra_pose_own)
+            self.gs_pipe = SimpleNamespace(
+                convert_SHs_python=False,
+                compute_cov3D_python=False,
+                depth_ratio=0.0,
+                debug=False,
+            )
+            self.gs_background = torch.tensor([0.0, 0.0, 0.0], dtype=torch.float32, device="cuda")
         
 
     # ---------------------------------------------------------------------------
@@ -422,10 +431,11 @@ class Environment(gym.Env):
             os.makedirs(self.gs_img_save_dir, exist_ok=True)
         if get_obs:
             obs = self._get_obs()
-            pybullet_color = obs['color'][0]
-            gs_color = obs['gs_color'][0]
-            cat_color = np.concatenate((pybullet_color, gs_color), axis=1)
-            cv2.imwrite(os.path.join(self.gs_img_save_dir,f"gs_img_{time.time()}.png"),cat_color)
+            pybullet_color = obs['color'][-1]
+            if self.gs_engine:
+                gs_color = obs['gs_color'][-1]
+                cat_color = np.concatenate((pybullet_color, gs_color), axis=1)
+                cv2.imwrite(os.path.join(self.gs_img_save_dir,f"gs_img_{time.time()}.png"),cat_color)
         
         while (time.time() - t0) < timeout:
             
@@ -510,6 +520,36 @@ class Environment(gym.Env):
                 gs_depth = render_pkg['surf_depth'].squeeze(0).contiguous().cpu().numpy()
                 obs['gs_color'] += (gs_color,)
                 obs['gs_depth'] += (gs_depth,)
+                
+        pos, rot = p.getLinkState(self.ur5, self.hand_cam_tip)[:2]
+        rot_matrix = np.array(p.getMatrixFromQuaternion(rot), dtype=np.float32).reshape(3, 3)
+        manual_move = np.array([0.0, 0.05, 0.05], dtype=np.float32)
+        forward_offset = rot_matrix @ manual_move
+        cam_position = np.array(pos) + forward_offset
+        # print(f"眼在手上的相机手动偏移了 {manual_move}")
+        config_hand_cam = copy.deepcopy(config)
+        config_hand_cam['position'] = tuple(cam_position.tolist())
+        config_hand_cam['rotation'] = rot
+        # config_hand_cam['intrinsics'] = (450.0, 0, 320.0, 0, 450.0, 240.0, 0, 0, 1)
+        color, depth, _,viewm,projm = self.render_camera(config_hand_cam)
+        obs['color'] += (color,)
+        obs['depth'] += (depth,)
+        K = config_hand_cam['intrinsics']
+        width = config_hand_cam['image_size'][1]
+        height = config_hand_cam['image_size'][0]
+        t = config_hand_cam['position']
+        q = config_hand_cam['rotation']
+
+        if self.gs_scene is not None:
+            gs_cam = self.build_gs_camera(K, width, height, t, q)
+            with torch.no_grad():
+                render_pkg = render(gs_cam, self.gs_scene.gaussians, self.gs_pipe, self.gs_background)
+            gs_color = torch.clamp(render_pkg['render'], 0.0, 1.0).permute(1, 2, 0).contiguous().cpu().numpy() * 255
+            gs_color = cv2.cvtColor(gs_color.astype(np.uint8), cv2.COLOR_RGB2BGR)
+            gs_depth = render_pkg['surf_depth'].squeeze(0).contiguous().cpu().numpy()
+            obs['gs_color'] += (gs_color,)
+            obs['gs_depth'] += (gs_depth,)
+
 
         return obs
 

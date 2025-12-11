@@ -51,6 +51,11 @@ class Dataset:
           episode: list of (obs, act, reward, info) tuples.
         """
         color, depth, action, reward, info = [], [], [], [], []
+        gs_color,gs_depth = [],[]
+        if episode[0][0].get('gs_depth', None) == None:
+            gs_engine = False
+        else:
+            gs_engine = True
         for obs, act, r, i in episode:
             color.append(obs['color'])
             depth.append(obs['depth'])
@@ -58,8 +63,16 @@ class Dataset:
             reward.append(r)
             info.append(i)
 
+            if gs_engine:
+                gs_color.append(obs.get('gs_color', None))
+                gs_depth.append(obs.get('gs_depth', None))
+
         color = np.uint8(color)
         depth = np.float32(depth)
+        if gs_engine:
+            gs_depth = np.float32(gs_depth)
+            gs_color = np.uint8(gs_color)
+
 
         def dump(data, field):
             field_path = os.path.join(self.path, field)
@@ -74,6 +87,9 @@ class Dataset:
         dump(action, 'action')
         dump(reward, 'reward')
         dump(info, 'info')
+        if gs_engine:
+            dump(gs_color, 'gs_color')
+            dump(gs_depth, 'gs_depth')
 
         self.n_episodes += 1
         self.max_seed = max(self.max_seed, seed)
@@ -126,11 +142,21 @@ class Dataset:
                 reward = load_field(episode_id, 'reward', fname)
                 info = load_field(episode_id, 'info', fname)
 
+                if os.path.exists(os.path.join(self.path, 'gs_depth')):
+                    gs_depth = load_field(episode_id, 'gs_depth', fname)
+                    gs_color = load_field(episode_id, 'gs_color', fname)
+
                 # Reconstruct episode.
                 episode = []
                 for i in range(len(action)):
-                    obs = {'color': color[i],
-                           'depth': depth[i]} if images else {}
+                    if os.path.exists(os.path.join(self.path, 'gs_depth')):
+                        obs = {'color': color[i],
+                               'depth': depth[i],
+                               'gs_depth': gs_depth[i],
+                               'gs_color': gs_color[i]} if images else {}
+                    else:
+                        obs = {'color': color[i],
+                            'depth': depth[i]} if images else {}
                     episode.append((obs, action[i], reward[i], info[i]))
                 return episode, seed
 

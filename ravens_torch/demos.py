@@ -25,14 +25,19 @@ flags.DEFINE_float('sim_speed', -1, '')
 flags.DEFINE_bool('all', False, '') 
 # 是否从头开始再来一遍
 
-flags.DEFINE_string('gs_render', 'test', '')
+flags.DEFINE_string('gs_render', '', '')
 # GS渲染的保存路径 如果不指定就不保存
+
+flags.DEFINE_string('own_scene', '', '')
+
+flags.DEFINE_bool("gs_engine", False, "")
+# 是否需要开启GS的渲染
 
 FLAGS = flags.FLAGS
 
 
 def main(unused_argv):
-
+    assert not(FLAGS.gs_render!= '' and FLAGS.gs_engine), "If you want to use GS rendering, please specify gs_render path and set gs_engine to True"
     # Initialize environment and task.
     env = Environment(
         FLAGS.assets_root,
@@ -40,7 +45,10 @@ def main(unused_argv):
         shared_memory=FLAGS.shared_memory,
         hz=480,
         sim_speed=FLAGS.sim_speed,
-        gs_render=FLAGS.gs_render)
+        gs_render=FLAGS.gs_render,
+        own_scene=FLAGS.own_scene,
+        gs_engine = FLAGS.gs_engine
+        )
     task = tasks.names[FLAGS.task]()
     task.mode = FLAGS.mode
 

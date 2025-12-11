@@ -28,8 +28,10 @@ class BlockInsertion(Task):
         self._add_instance(env)
 
     def _add_instance(self, env):
-        block_id = self.add_block(env)
-        targ_pose = self.add_fixture(env)
+        # block_id = self.add_block(env)
+        # targ_pose = self.add_fixture(env)
+        
+        targ_pose = self.add_fixture_ret(env)
 
         own_obj_id = self.add_block_own(env)
         self.own_obj_id = own_obj_id
@@ -142,7 +144,14 @@ class BlockInsertion(Task):
         pose = self.get_random_pose(env, size)
         env.add_object(urdf, pose, 'fixed')
         return pose
-
+    
+    def add_fixture_ret(self, env):
+        """改为一个长方形的容器"""
+        size = (0.1, 0.12, 0.08)
+        urdf = 'insertion/fixture_ret.urdf'
+        pose = self.get_random_pose(env, size)
+        env.add_object(urdf, pose, 'fixed')
+        return pose
 
 class BlockInsertionTranslation(BlockInsertion):
     """Insertion Task - Translation Variant."""

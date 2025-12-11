@@ -112,6 +112,27 @@ def reconstruct_heightmaps(color, depth, configs, bounds, pixel_size):
         colormaps.append(colormap)
     return heightmaps, colormaps
 
+def reconstruct_heightmaps_GS(gs_colors,colors, depths, configs, bounds, pixel_size):
+    """Reconstruct top-down heightmap views from multiple 3D pointclouds."""
+    heightmaps, colormaps = [], []
+    for gs_color, color, depth, config in zip(gs_colors, colors, depths, configs):
+        color_bgr = color[:, :, :3]
+        # black_mask = np.all(gs_color == 0, axis=2)
+        mask = np.mean(gs_color.astype(np.float32), axis=2) < 20
+        gs_color[mask] = color_bgr[mask]
+        intrinsics = np.array(config['intrinsics']).reshape(3, 3)
+        xyz = get_pointcloud(depth, intrinsics)
+        position = np.array(config['position']).reshape(3, 1)
+        rotation = p.getMatrixFromQuaternion(config['rotation'])
+        rotation = np.array(rotation).reshape(3, 3)
+        transform = np.eye(4)
+        transform[:3, :] = np.hstack((rotation, position))
+        xyz = transform_pointcloud(xyz, transform)
+        heightmap, colormap = get_heightmap(xyz, gs_color, bounds, pixel_size)
+        heightmaps.append(heightmap)
+        colormaps.append(colormap)
+    return heightmaps, colormaps
+
 
 def pix_to_xyz(pixel, height, bounds, pixel_size, skip_height=False):
     """Convert from pixel location on heightmap to 3D position."""

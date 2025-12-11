@@ -12,7 +12,7 @@ import torchvision
 from torchvision.transforms.functional import InterpolationMode, rotate
 from einops.layers.torch import Rearrange
 
-from ravens_torch.utils.utils.heightmap import reconstruct_heightmaps, pix_to_xyz
+from ravens_torch.utils.utils.heightmap import reconstruct_heightmaps, pix_to_xyz,reconstruct_heightmaps_GS
 
 
 # -----------------------------------------------------------------------------
@@ -35,6 +35,22 @@ def get_fused_heightmap(obs, configs, bounds, pix_size):
     """Reconstruct orthographic heightmaps with segmentation masks."""
     heightmaps, colormaps = reconstruct_heightmaps(
         obs['color'], obs['depth'], configs, bounds, pix_size)
+    colormaps = np.float32(colormaps)
+    heightmaps = np.float32(heightmaps)
+
+    # Fuse maps from different views.
+    valid = np.sum(colormaps, axis=3) > 0
+    repeat = np.sum(valid, axis=0)
+    repeat[repeat == 0] = 1
+    cmap = np.sum(colormaps, axis=0) / repeat[Ellipsis, None]
+    cmap = np.uint8(np.round(cmap))
+    hmap = np.max(heightmaps, axis=0)  # Max to handle occlusions.
+    return cmap, hmap
+
+def get_fused_heightmap_GS(obs, configs, bounds, pix_size):
+    """Reconstruct orthographic heightmaps with segmentation masks."""
+    heightmaps, colormaps = reconstruct_heightmaps_GS(
+        obs['gs_color'], obs['color'], obs['depth'], configs, bounds, pix_size)
     colormaps = np.float32(colormaps)
     heightmaps = np.float32(heightmaps)
 

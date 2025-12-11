@@ -48,7 +48,7 @@ class Camera(nn.Module):
             self.gt_alpha_mask = None
         
         self.zfar = 100.0
-        self.znear = 0.01
+        self.znear = 0.00003
 
         self.trans = trans
         self.scale = scale

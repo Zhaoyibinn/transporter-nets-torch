@@ -3,6 +3,7 @@ from ravens_torch.utils.utils.heightmap import (
     get_pointcloud,
     transform_pointcloud,
     reconstruct_heightmaps,
+    reconstruct_heightmaps_GS,
     pix_to_xyz,
     xyz_to_pix,
     unproject_vectorized,
@@ -11,6 +12,7 @@ from ravens_torch.utils.utils.heightmap import (
 from ravens_torch.utils.utils.image import (
     preprocess,
     get_fused_heightmap,
+    get_fused_heightmap_GS,
     get_image_transform,
     check_transform,
     get_se3_from_image_transform,
