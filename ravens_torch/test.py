@@ -37,6 +37,22 @@ flags.DEFINE_boolean('verbose', True,
                      help='Print more information while running this script')
 flags.DEFINE_boolean('record_mp4', False,
                      help='Record mp4 videos of the tasks being completed')
+
+
+
+flags.DEFINE_string('gs_render', '', '')
+# GS渲染的保存路径 如果不指定就不保存
+
+flags.DEFINE_string('own_scene', '', '')
+
+flags.DEFINE_bool("gs_engine", False, "")
+# 是否需要开启GS的渲染
+
+flags.DEFINE_string("train_data_dir", "", "")
+
+flags.DEFINE_string('checkpoint_dir', '', '')
+
+
 FLAGS = flags.FLAGS
 
 
@@ -46,7 +62,10 @@ def main(unused_argv):
         FLAGS.assets_root,
         disp=FLAGS.disp,
         shared_memory=FLAGS.shared_memory,
-        hz=240)
+        hz=240,
+        own_scene=FLAGS.own_scene,
+        gs_engine = FLAGS.gs_engine,
+        )
     task = tasks.names[FLAGS.task]()
     task._set_mode('test')
     print(bold("=" * 20 + "\n" + f"TASK: {FLAGS.task}" + "\n" + "=" * 20))
@@ -56,11 +75,12 @@ def main(unused_argv):
 
     # Run testing for each training run.
     for train_run in range(FLAGS.n_runs):
+
         name = f'{FLAGS.task}-{FLAGS.agent}-{FLAGS.n_demos}-{train_run}'
 
         # Initialize agent.
         set_seed(train_run)
-        agent = agents.names[FLAGS.agent](name, FLAGS.task, FLAGS.root_dir)
+        agent = agents.names[FLAGS.agent](name, FLAGS.task, FLAGS.root_dir,checkpoint_dir = FLAGS.checkpoint_dir)
 
         # # Run testing every interval.
         # for train_step in range(0, FLAGS.n_steps + 1, FLAGS.interval):
@@ -77,7 +97,8 @@ def main(unused_argv):
                     episode_idx=i,
                     record_mp4=FLAGS.record_mp4,
                     display=FLAGS.disp,
-                    verbose=FLAGS.verbose) as vid_rec:
+                    verbose=FLAGS.verbose,
+                    ) as vid_rec:
                 print(f'Test: {i + 1}/{ds.n_episodes}')
                 episode, seed = ds.load(i)
                 goal = episode[-1]

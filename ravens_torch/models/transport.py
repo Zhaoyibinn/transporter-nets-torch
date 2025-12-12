@@ -139,11 +139,13 @@ class Transport:
         output = self.forward(in_img, p, softmax=False)
 
         itheta = theta / (2 * np.pi / self.n_rotations)
+        # 把角度离散化到self.n_rotations个方向上
         itheta = np.int32(np.round(itheta)) % self.n_rotations
 
         # Get one-hot pixel label map.
         label_size = in_img.shape[:2] + (self.n_rotations,)
         label = np.zeros(label_size)
+        # H * W * self.n_rotations的label 在这么多离散的label里面就一个1
         label[q[0], q[1], itheta] = 1
 
         # Get loss.

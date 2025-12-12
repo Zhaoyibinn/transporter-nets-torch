@@ -89,7 +89,7 @@ class Attention:
         label = np.zeros(label_size)
         label[p[0], p[1], theta_i] = 1
         label = torch.tensor(label, dtype=torch.float32).to(self.device)
-
+        # 也就是对于不同的旋转角有不同的位置标签 位置处为1其他为0 然后flatten做loss
         # Get loss.
         label = Rearrange('h w c -> 1 (h w c)')(label)
         label = torch.argmax(label, dim=1)

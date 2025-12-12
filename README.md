@@ -1,5 +1,11 @@
 # PyTorch adaptation of [Ravens - Transporter Networks](https://github.com/google-research/ravens)
 
+Zhaoyibin's Fork
+
+ECUST
+
+**网络的核心逻辑：先采用Attention网络得到最好的起始点 $p_0$ （吸取点）；然后再用Transport网络得到最好的旋转角度 $\text{theta}_1$ 和放置点 $p_1$**
+
 - ### [Original repository (in TensorFlow)](https://github.com/google-research/ravens)
 - ### Original Paper: Transporter Networks: Rearranging the Visual World for Robotic Manipulation
   [Project Website](https://transporternets.github.io/)&nbsp;&nbsp;•&nbsp;&nbsp;[PDF](https://arxiv.org/pdf/2010.14406.pdf)&nbsp;&nbsp;•&nbsp;&nbsp;Conference on Robot Learning (CoRL) 2020
@@ -56,9 +62,21 @@ export PYTHONPATH=`pwd`:$PYTHONPATH
 **Step 1.** Generate training and testing data (saved locally). Note: remove `--disp` for headless mode.
 
 ```shell
-python ravens_torch/demos.py --disp=True --task=block-insertion --mode=train --n=10
+python ravens_torch/demos.py --disp=True --task=block-insertion --mode=train --n=500 --all=True --sim_speed=-1 --gs_engine --own_scene=milk_iphone
 python ravens_torch/demos.py --disp=True --task=block-insertion --mode=test --n=100
 ```
+
+--disp支是否需要可视化；
+
+--all主要是每次都重新生成建议一直开启；
+
+--sim_speed为可以手动控制的速度倍率，如果需要全速那就是-1；
+
+--gs_engine表示是否需要开启GS引擎进行渲染，如果开启，保存的文件夹就会多出俩gs_color和gs_depth；
+
+--own_scene表示手动加的物体的文件夹，在ravens_torch/environments/assets/insertion下，需要有四个文件夹，GS场景point_cloud.ply，和GS场景对齐的mesh fuse_post.ply，用于加载的fuse_post.urdf，在supersplat手动对正的变换T.txt
+
+
 
 You can also manually change the parameters in `ravens_torch/demos.py` and then run `make demos` in the shell (see the Makefile if needed).
 
@@ -67,16 +85,36 @@ To run with shared memory, open a separate terminal window and run `python3 -m p
 **Step 2.** Train a model e.g., Transporter Networks model. Model checkpoints are saved to the `data/checkpoints` directory. Optional: you may exit training prematurely after 1000 iterations to skip to the next step.
 
 ```shell
-python ravens_torch/train.py --task=block-insertion --agent=transporter --n_demos=10
+python ravens_torch/train.py --task=block-insertion --agent=transporter --n_demos=500 --n_save=2000 --n_steps=4000 --interval=500 --train_data_dir=block-insertion-GS --checkpoint_dir=transporter-block-insertion-GS
 ```
+
+所有的数据、训练结果都在ravens_torch/data文件夹下
+
+--n_save为训练存储轮数；--interval为测试轮数
+
+--n_steps为总训练轮数
+
+--n_demos为样本量，和之前保持一致即可
+
+--train_data_dir就是训练和测试用的数据的路径，训练数据是在train_data_dir后面加个-train，测试是加个-test，默认来说，GS引擎开的数据名称为block-insertion-GS，不开的名称为block-insertion
+
+--checkpoint_dir是需要保存的checkpoints的文件夹路径，在ravens_torch/data/checkpoints文件夹下
 
 Likewise for demos, you can run `make train`.
 
 **Step 3.** Evaluate a Transporter Networks agent using the model trained for 1000 iterations. Results are saved locally into `.pkl` files.
 
 ```shell
-python ravens_torch/test.py --disp=True --task=block-insertion --agent=transporter --n_demos=10 --n_steps=1000
+python ravens_torch/test.py --disp=True --task=block-insertion --agent=transporter --n_demos=10 --n_steps=1000 --own_scene=milk_iphone --gs_engine=True --train_data_dir=block-insertion-GS --checkpoint_dir=transporter-block-insertion-GS
 ```
+
+--own_scene和train保持一致即可，加入一样的东西
+
+--gs_engine如果训练的时候开了这里就开着
+
+--train_data_dir与train的时候保持一致，但是这里只用测试的
+
+--checkpoint_dir和训练时候保持一致
 
 Again, `make test` automates it.
 

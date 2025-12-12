@@ -15,7 +15,7 @@ import open3d as o3d
 
 import pybullet as p
 
-
+from absl import logging
 class BlockInsertion(Task):
     """Insertion Task - Base Variant."""
 
@@ -39,9 +39,11 @@ class BlockInsertion(Task):
         #     ([block_id], [2 * np.pi], [[0]], [targ_pose], 'pose', None, 1.))
         # self.goals.append(([(block_id, (2 * np.pi, None))], np.int32([[1]]),
         #                    [targ_pose], False, True, 'pose', None, 1))
-        self.goals.append(([(own_obj_id, (2 * np.pi, None))], np.int32([[1]]),
+        duicheng_rot = np.pi
+        logging.debug(f"目标位姿的旋转角度为 {duicheng_rot} 弧度")
+        self.goals.append(([(own_obj_id, (duicheng_rot, None))], np.int32([[1]]),
                            [targ_pose], False, True, 'pose', None, 1))
-
+        print
     def add_block(self, env):
         """Add L-shaped block."""
         size = (0.1, 0.1, 0.04)

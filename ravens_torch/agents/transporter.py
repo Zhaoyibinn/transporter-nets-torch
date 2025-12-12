@@ -14,11 +14,13 @@ from ravens_torch.models.transport_goal import TransportGoal
 from ravens_torch.tasks import cameras
 from ravens_torch.utils import utils
 
+from absl import logging
+
 
 class TransporterAgent:
     """Agent that uses Transporter Networks."""
 
-    def __init__(self, name, task, root_dir, n_rotations=36):
+    def __init__(self, name, task, root_dir, n_rotations=36,checkpoint_dir = None):
         self.name = name
         self.task = task
         self.total_steps = 0
@@ -27,7 +29,11 @@ class TransporterAgent:
         self.pix_size = 0.003125
         self.in_shape = (320, 160, 6)
         self.cam_config = cameras.RealSenseD415.CONFIG
-        self.models_dir = os.path.join(root_dir, 'checkpoints', self.name)
+        if checkpoint_dir == None:
+
+            self.models_dir = os.path.join(root_dir, 'checkpoints', self.name)
+        else:
+            self.models_dir = os.path.join(root_dir, 'checkpoints', checkpoint_dir)
         self.bounds = np.array([[0.25, 0.75], [-0.5, 0.5], [0, 0.28]])
 
     def get_image(self, obs):
@@ -118,6 +124,7 @@ class TransporterAgent:
         # Get training losses.
         step = self.total_steps + 1
         loss0 = self.attention.train(img, p0, p0_theta)
+        # attention loss 图像注意力 就是图像需要关注什么地方 和角度没关系 p0_theta=0
         if isinstance(self.transport, Attention):
             loss1 = self.transport.train(img, p1, p1_theta)
         else:
@@ -154,7 +161,8 @@ class TransporterAgent:
     def validate(self, dataset, writer=None):  # pylint: disable=unused-argument
         """Test on a validation dataset for 10 iterations."""
 
-        n_iter = 10
+        n_iter = 20
+        logging.debug("在测试集中测试 %d 张图像", n_iter)
         loss0, loss1 = 0, 0
         for _ in range(n_iter):
             img, p0, p0_theta, p1, p1_theta = self.get_sample(dataset, False)
@@ -182,7 +190,10 @@ class TransporterAgent:
         self.transport.eval_mode()
 
         # Get heightmap from RGB-D images.
-        img = self.get_image(obs)
+        if obs.get('gs_color', None) is None:
+            img = self.get_image(obs)
+        else:
+            img = self.get_GS_image(obs)
 
         # Attention model forward pass.
         pick_conf = self.attention.forward(img)
@@ -265,8 +276,8 @@ class TransporterAgent:
 
 class OriginalTransporterAgent(TransporterAgent):
 
-    def __init__(self, name, task, n_rotations=36, verbose=False):
-        super().__init__(name, task, n_rotations)
+    def __init__(self, name, task, n_rotations=36, verbose=False, checkpoint_dir=None):
+        super().__init__(name, task, n_rotations,checkpoint_dir = checkpoint_dir)
 
         self.attention = Attention(
             in_shape=self.in_shape,

@@ -5,12 +5,14 @@
 
 import os
 import numpy as np
-from absl import app, flags
+from absl import app, flags, logging
 
 from ravens_torch import tasks
 from ravens_torch.constants import EXPERIMENTS_DIR, ENV_ASSETS_DIR
 from ravens_torch.dataset import Dataset
 from ravens_torch.environments.environment import Environment
+# import logging
+logging.set_verbosity(logging.DEBUG)
 
 
 flags.DEFINE_string('assets_root', ENV_ASSETS_DIR, '')
@@ -37,7 +39,7 @@ FLAGS = flags.FLAGS
 
 
 def main(unused_argv):
-    assert not(FLAGS.gs_render!= '' and FLAGS.gs_engine), "If you want to use GS rendering, please specify gs_render path and set gs_engine to True"
+    assert not(FLAGS.gs_render!= '' and not FLAGS.gs_engine), "If you want to use GS rendering, please specify gs_render path and set gs_engine to True"
     # Initialize environment and task.
     env = Environment(
         FLAGS.assets_root,
@@ -54,8 +56,13 @@ def main(unused_argv):
 
     # Initialize scripted oracle agent and dataset.
     agent = task.oracle(env)
-    dataset = Dataset(os.path.join(
-        FLAGS.data_dir, f'{FLAGS.task}-{task.mode}'),all_flag=FLAGS.all)
+    if FLAGS.gs_engine:
+
+        dataset = Dataset(os.path.join(
+            FLAGS.data_dir, f'{FLAGS.task}-GS-{task.mode}'),all_flag=FLAGS.all)
+    else:
+        dataset = Dataset(os.path.join(
+            FLAGS.data_dir, f'{FLAGS.task}-{task.mode}'),all_flag=FLAGS.all)
 
     # Train seeds are even and test seeds are odd.
     seed = dataset.max_seed
@@ -74,6 +81,9 @@ def main(unused_argv):
         obs = env.reset()
         info = None
         reward = 0
+        # 运动前采集一次 运动后采集一次
+        # 运动前后都采集观察
+        # 运动前采集agent生成的目标位姿act 运动后采集奖励和运动之后的位姿
         for _ in range(task.max_steps):
             act = agent.act(obs, info)
             # print('Acting...', act)

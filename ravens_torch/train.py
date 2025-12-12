@@ -26,6 +26,11 @@ flags.DEFINE_integer('gpu', 0, '')
 flags.DEFINE_integer('gpu_limit', None, '')
 flags.DEFINE_boolean('verbose', True, '')
 
+flags.DEFINE_integer('n_save', 500, '')
+flags.DEFINE_string('train_data_dir', '', '')
+flags.DEFINE_string('checkpoint_dir', '', '')
+
+
 FLAGS = flags.FLAGS
 
 
@@ -35,7 +40,10 @@ def main(unused_argv):
 
     # Run training from scratch multiple times.
     for train_run in range(FLAGS.n_runs):
-        name = f'{FLAGS.task}-{FLAGS.agent}-{FLAGS.n_demos}-{train_run}'
+        if FLAGS.train_data_dir != '':
+            name = f'{FLAGS.task}-{FLAGS.agent}-{FLAGS.train_data_dir}-{FLAGS.n_demos}-{train_run}'
+        else:
+            name = f'{FLAGS.task}-{FLAGS.agent}-{FLAGS.n_demos}-{train_run}'
 
         # Set up tensorboard logger.
         writer = SummaryWriter(get_log_dir(FLAGS))
@@ -43,7 +51,7 @@ def main(unused_argv):
         # Initialize agent.
         set_seed(train_run)
         agent = agents.names[FLAGS.agent](
-            name, FLAGS.task, FLAGS.train_dir, verbose=FLAGS.verbose)
+            name, FLAGS.task, FLAGS.train_dir, verbose=FLAGS.verbose,checkpoint_dir = FLAGS.checkpoint_dir)
 
         # Limit random sampling during training to a fixed dataset.
         max_demos = train_dataset.n_episodes
@@ -52,10 +60,11 @@ def main(unused_argv):
 
         # Train agent and save snapshots.
         while agent.total_steps < FLAGS.n_steps:
-            for _ in range(FLAGS.interval):
-                agent.train(train_dataset, writer)
-            agent.validate(test_dataset, writer)
-            if agent.total_steps % 1000 == 0:
+
+            agent.train(train_dataset, writer)
+            if (agent.total_steps % FLAGS.interval == 0):
+                agent.validate(test_dataset, writer)
+            if agent.total_steps % FLAGS.n_save == 0:
                 agent.save(FLAGS.verbose)
 
 

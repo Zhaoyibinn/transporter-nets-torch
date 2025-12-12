@@ -18,7 +18,7 @@ from ravens_torch.tasks.grippers import Suction
 from ravens_torch.utils import utils
 
 import pybullet as p
-
+from absl import logging
 
 class Task():
     """Base Task class."""
@@ -137,7 +137,7 @@ class Task():
             pick_center = np.round(np.mean(pick_indices, axis=0)).astype(np.int32)
             pick_pix = tuple(np.clip(pick_center, [0, 0], [pick_mask.shape[0] - 1,
                                                        pick_mask.shape[1] - 1]))
-            print("修改为基于mask中心点的pick位置")
+            logging.debug("修改为基于mask中心点的pick位置而不是随机")
             # For "deterministic" demonstrations on insertion-easy, use this:
             # pick_pix = (160,80)
             pick_pos = utils.pix_to_xyz(pick_pix, hmap,

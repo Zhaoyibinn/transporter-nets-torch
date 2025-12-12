@@ -106,7 +106,7 @@ class ConvBlock(nn.Module):
                  activation=True,
                  include_batchnorm=False):
         """A block that has a conv layer at shortcut.
-
+        一个典型的bottleneck结构 先用1x1 再3x3 最后1x1 out_channels就是三层的通道数
         Note that from stage 3,
         the first conv layer at main path is with strides=(2, 2)
         And the shortcut should have strides=(2, 2) as well
@@ -192,6 +192,7 @@ class ResNet43_8s(nn.Module):
             )
             self.block_cutoff_early.apply(init_xavier_weights)
 
+        # 其实就是卷积下采样 然后直接上采样的过程
         self.block_full = nn.Sequential(
             ConvBlock(64, 3, [64, 64, 64], stride=1),
             IdentityBlock(64, 3, [64, 64, 64]),
@@ -230,7 +231,7 @@ class ResNet43_8s(nn.Module):
         self.block_full.apply(init_xavier_weights)
 
     def forward(self, x):
-        out = self.block_short(x)
+        out = self.block_short(x) # 就是一个到64维度的CNN
 
         if self.cutoff_early:
             return self.block_cutoff_early(out)
